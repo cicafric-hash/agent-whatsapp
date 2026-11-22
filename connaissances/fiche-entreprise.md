@@ -14,7 +14,7 @@ Les informations marquées « à compléter » ne figurent pas sur le site : l'a
 - Langue des réponses : français, ou la langue du prospect s'il en écrit une autre.
 
 ## Contacts et adresse
-- Ce numéro WhatsApp est celui de l'agent : un conseiller peut reprendre la conversation ici à tout moment.
+- WhatsApp de l'agent : +223 75 75 86 70, le numéro de cette conversation (lien direct : https://wa.me/22375758670). C'est le numéro à donner à un prospect qui veut le partager. Un conseiller peut reprendre la conversation ici à tout moment.
 - Assistance WhatsApp de l'EUTG : +223 77 25 40 35
 - Téléphones : +223 66 61 88 93 ; +223 74 82 22 87 ; +223 90 89 35 31
 - E-mail : renseignement@eutg-mali.com (réponse sous 24 h ouvrées)
