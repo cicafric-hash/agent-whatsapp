@@ -1,0 +1,166 @@
+// Tests des petits outils : mise en forme, signature, connaissances, client WhatsApp.
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import { describe, it } from "node:test";
+import { fusionnerTours } from "../src/agent.js";
+import { chargerConnaissances, extraireNomEntreprise } from "../src/connaissances.js";
+import { lireConfig } from "../src/config.js";
+import {
+  chiffresSeulement,
+  decouper,
+  estDemandeSuppression,
+  formaterMontant,
+  formaterNumero,
+  formaterPourWhatsApp,
+} from "../src/format.js";
+import { signatureValide } from "../src/securite.js";
+import { ErreurWhatsApp, WhatsApp } from "../src/whatsapp.js";
+
+describe("mise en forme", () => {
+  it("adapte le Markdown au format WhatsApp", () => {
+    const texte = "# Nos prix\n\n**Bazin** : 25 000 FCFA\n* livraison rapide\n| Produit | Prix |\n| --- | --- |\n| Pagne | 5 000 |\n[Voir](https://exemple.com)";
+    assert.equal(
+      formaterPourWhatsApp(texte),
+      "*Nos prix*\n\n*Bazin* : 25 000 FCFA\n- livraison rapide\nProduit — Prix\nPagne — 5 000\nVoir : https://exemple.com",
+    );
+  });
+
+  it("découpe les textes de plus de 4 096 caractères", () => {
+    const long = `${"a".repeat(3000)}\n\n${"b".repeat(3000)}`;
+    const morceaux = decouper(long, 4096);
+    assert.equal(morceaux.length, 2);
+    assert.ok(morceaux.every((m) => m.length <= 4096));
+  });
+
+  it("normalise et affiche les numéros", () => {
+    assert.equal(chiffresSeulement("0022375758670"), "22375758670");
+    assert.equal(chiffresSeulement("+223 75 75 86 70"), "22375758670");
+    assert.equal(formaterNumero("22375758670"), "+223 75 75 86 70");
+    assert.equal(formaterMontant(51500), "51 500");
+  });
+
+  it("reconnaît la demande de suppression", () => {
+    assert.equal(estDemandeSuppression("Supprimer mes données"), true);
+    assert.equal(estDemandeSuppression("  SUPPRIMER MES DONNEES !"), true);
+    assert.equal(estDemandeSuppression("Comment supprimer mes données ?"), false);
+  });
+
+  it("fusionne les tours d'un même rôle et commence par le client", () => {
+    const tours = fusionnerTours([
+      { role: "assistant", content: "Bonjour" },
+      { role: "user", content: "a" },
+      { role: "user", content: [{ type: "text", text: "b" }] },
+      { role: "assistant", content: "c" },
+    ]);
+    assert.deepEqual(tours, [
+      { role: "user", content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] },
+      { role: "assistant", content: [{ type: "text", text: "c" }] },
+    ]);
+  });
+});
+
+describe("signature des webhooks", () => {
+  it("accepte la bonne signature et refuse les autres", () => {
+    const corps = Buffer.from('{"object":"whatsapp_business_account"}');
+    const bonne = `sha256=${crypto.createHmac("sha256", "secret").update(corps).digest("hex")}`;
+    assert.equal(signatureValide(corps, bonne, "secret"), true);
+    assert.equal(signatureValide(corps, bonne, "autre"), false);
+    assert.equal(signatureValide(corps, "sha256=abc", "secret"), false);
+    assert.equal(signatureValide(corps, undefined, "secret"), false);
+  });
+});
+
+describe("configuration et connaissances", () => {
+  it("signale les variables obligatoires manquantes", () => {
+    assert.throws(() => lireConfig({}), /ANTHROPIC_API_KEY, WHATSAPP_TOKEN/);
+  });
+
+  it("applique les valeurs par défaut", () => {
+    const config = lireConfig({
+      ANTHROPIC_API_KEY: "a",
+      WHATSAPP_TOKEN: "b",
+      WHATSAPP_PHONE_NUMBER_ID: "c",
+      WHATSAPP_VERIFY_TOKEN: "d",
+      WHATSAPP_APP_SECRET: "e",
+      ADMIN_PASSWORD: "f",
+      OWNER_WHATSAPP: "+223 75 75 86 70",
+      GRAPH_API_VERSION: "26.0",
+      PORT: "0",
+    });
+    assert.equal(config.modele, "claude-opus-5-5");
+    assert.equal(config.graphVersion, "v26.0");
+    assert.equal(config.proprietaire, "22375758670");
+    assert.equal(config.fuseau, "Africa/Bamako");
+    assert.equal(config.port, 0);
+  });
+
+  it("construit le prompt système à partir des fichiers du dossier connaissances", () => {
+    const connaissances = chargerConnaissances();
+    assert.match(connaissances.systeme, /<consignes>[\s\S]*Méthode de vente[\s\S]*<\/consignes>/);
+    assert.match(connaissances.systeme, /<fiche_entreprise>[\s\S]*Produits et prix[\s\S]*<\/fiche_entreprise>/);
+    assert.equal(connaissances.nomEntreprise, null, "la fiche d'exemple n'a pas encore de vrai nom");
+    assert.equal(connaissances.avertissements.length, 1);
+  });
+
+  it("lit le nom de l'entreprise dans la fiche", () => {
+    assert.equal(extraireNomEntreprise("- Nom de l'entreprise : Boutique Awa Mode"), "Boutique Awa Mode");
+    assert.equal(extraireNomEntreprise("- Nom de l'entreprise : [ex. Boutique]"), null);
+  });
+});
+
+describe("client WhatsApp", () => {
+  function fauxFetch(reponses) {
+    const appels = [];
+    const fetchImpl = async (url, options) => {
+      appels.push({ url, options });
+      const { status = 200, corps } = reponses.shift();
+      return new Response(JSON.stringify(corps), { status, headers: { "content-type": "application/json" } });
+    };
+    return { appels, fetchImpl };
+  }
+
+  it("envoie un texte au bon numéro, avec le token", async () => {
+    const { appels, fetchImpl } = fauxFetch([{ corps: { messages: [{ id: "wamid.1" }] } }]);
+    const whatsapp = new WhatsApp({ token: "EAA", phoneNumberId: "111", version: "v26.0", fetchImpl });
+    await whatsapp.envoyerTexte({ telephone: "22375758670" }, "Bonjour");
+    assert.equal(appels[0].url, "https://graph.facebook.com/v26.0/111/messages");
+    assert.equal(appels[0].options.headers.Authorization, "Bearer EAA");
+    assert.deepEqual(JSON.parse(appels[0].options.body), {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "22375758670",
+      type: "text",
+      text: { preview_url: false, body: "Bonjour" },
+    });
+  });
+
+  it("écrit par identifiant WhatsApp quand le numéro est inconnu", async () => {
+    const { appels, fetchImpl } = fauxFetch([{ corps: { messages: [{ id: "wamid.2" }] } }]);
+    const whatsapp = new WhatsApp({ token: "EAA", phoneNumberId: "111", fetchImpl });
+    await whatsapp.envoyerTexte({ telephone: null, userId: "ML.123" }, "Bonjour");
+    const corps = JSON.parse(appels[0].options.body);
+    assert.equal(corps.recipient, "ML.123");
+    assert.equal("to" in corps, false);
+  });
+
+  it("transforme les erreurs de Meta en ErreurWhatsApp avec leur code", async () => {
+    const { fetchImpl } = fauxFetch([
+      { status: 400, corps: { error: { message: "Re-engagement message", code: 131047, error_data: { details: "plus de 24 h" } } } },
+    ]);
+    const whatsapp = new WhatsApp({ token: "EAA", phoneNumberId: "111", fetchImpl });
+    await assert.rejects(whatsapp.envoyerTexte({ telephone: "22375758670" }, "Bonjour"), (err) => {
+      assert.ok(err instanceof ErreurWhatsApp);
+      assert.equal(err.code, 131047);
+      assert.match(err.resume, /131047.*plus de 24 h/);
+      return true;
+    });
+  });
+
+  it("enregistre le numéro avec le code PIN", async () => {
+    const { appels, fetchImpl } = fauxFetch([{ corps: { success: true } }]);
+    const whatsapp = new WhatsApp({ token: "EAA", phoneNumberId: "111", fetchImpl });
+    await whatsapp.enregistrerNumero("123456");
+    assert.equal(appels[0].url, "https://graph.facebook.com/v26.0/111/register");
+    assert.deepEqual(JSON.parse(appels[0].options.body), { messaging_product: "whatsapp", pin: "123456" });
+  });
+});

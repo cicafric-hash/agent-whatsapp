@@ -1,0 +1,19 @@
+{
+  "name": "agent-whatsapp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Agent commercial IA pour WhatsApp (API WhatsApp Cloud de Meta + API Claude d'Anthropic)",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.12.0",
+    "express": "^5.3.0"
+  }
+}
