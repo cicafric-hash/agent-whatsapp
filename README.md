@@ -57,6 +57,8 @@ En production, passez en **Starter**, ajoutez un disque (**Disks** : Mount Path 
 | `CLAUDE_MODEL` | Non | `claude-opus-5-5` par défaut ; `claude-sonnet-5-5` ou `claude-haiku-5-5` pour réduire les coûts |
 | `WHATSAPP_BUSINESS_ACCOUNT_ID` | Non | Application Meta > WhatsApp > API Setup > WhatsApp Business Account ID |
 | `OWNER_WHATSAPP` | Non | Numéro qui reçoit les alertes, chiffres seulement, avec l'indicatif (ex. `22375758670`) |
+| `MODELE_ALERTE` | Non | `alerte_agent` par défaut : nom du modèle de message des alertes ; `aucun` pour ne jamais l'utiliser |
+| `MODELE_ALERTE_LANGUE` | Non | `fr` par défaut : langue du modèle d'alerte |
 | `GRAPH_API_VERSION` | Non | `v26.0` par défaut |
 | `DATA_DIR` | Non | `/var/data` en production avec un disque Render |
 | `FUSEAU_HORAIRE` | Non | `Africa/Bamako` par défaut |
@@ -77,7 +79,17 @@ Ouvrez `https://VOTRE-ADRESSE.onrender.com/admin`. Identifiant : `admin`. Mot de
 
 - **Conversations** : chaque prospect, ses messages, la fenêtre de 24 heures pendant laquelle WhatsApp autorise une réponse, un champ pour répondre vous-même et un bouton pour mettre l'agent en pause ou le relancer. Répondre vous-même met l'agent en pause pour ce prospect.
 - **Pré-inscriptions** : les pré-inscriptions enregistrées par l'agent, avec leur référence, la filière, le niveau d'entrée, le rythme et l'intérêt pour le concours de bourses.
-- **Outils** : tester la connexion WhatsApp, enregistrer votre numéro avec un code PIN à 6 chiffres, abonner l'application au compte WhatsApp, envoyer un message test au propriétaire.
+- **Outils** : tester la connexion WhatsApp, enregistrer votre numéro avec un code PIN à 6 chiffres, abonner l'application au compte WhatsApp, envoyer un message test au propriétaire, créer le modèle d'alerte, vérifier son statut et envoyer une alerte test avec ce modèle.
+
+## Recevoir les alertes à tout moment
+
+WhatsApp n'autorise un message libre vers le numéro `OWNER_WHATSAPP` que s'il a écrit à l'agent dans les 24 heures précédentes. Au-delà, l'agent utilise un modèle de message approuvé par Meta :
+
+1. Dans `/admin`, page **Outils**, carte « Modèle de message d'alerte », cliquez sur **Créer le modèle d'alerte**.
+2. Quelques minutes plus tard, cliquez sur **Vérifier son statut** : il doit indiquer `APPROVED`. L'examen par Meta peut parfois prendre jusqu'à 48 heures.
+3. Cliquez sur **Envoyer une alerte test avec le modèle** : le numéro `OWNER_WHATSAPP` doit la recevoir.
+
+Ensuite, l'agent envoie l'alerte en message libre si ce numéro a écrit depuis moins de 24 heures, et avec le modèle dans le cas contraire. Une alerte libre refusée par Meta pour cette raison est renvoyée avec le modèle. Chaque alerte envoyée avec le modèle est facturée par Meta. Les modèles appartiennent à un compte WhatsApp Business : recréez-le si `WHATSAPP_BUSINESS_ACCOUNT_ID` change, par exemple au passage du numéro de test à votre vrai numéro.
 - **Journal** : les erreurs et les événements, avec un conseil pour les codes d'erreur WhatsApp courants.
 
 ## Passer en production avec votre vrai numéro
@@ -89,6 +101,7 @@ Ouvrez `https://VOTRE-ADRESSE.onrender.com/admin`. Identifiant : `admin`. Mot de
     - suppression des données : `https://VOTRE-ADRESSE.onrender.com/suppression-donnees`
 4. Ajoutez un moyen de paiement dans WhatsApp Manager : au-delà de 1 000 réponses gratuites par mois et par numéro, Meta ne livre plus les réponses sans moyen de paiement.
 5. `OWNER_WHATSAPP` doit être un autre numéro que celui de l'agent.
+6. Si le compte WhatsApp Business a changé, recréez le modèle d'alerte (page **Outils**) et attendez son approbation.
 
 ## Pour les développeurs
 

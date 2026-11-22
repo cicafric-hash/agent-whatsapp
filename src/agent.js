@@ -9,6 +9,7 @@ import {
   FUSEAU_PAR_DEFAUT,
   masquerNumero,
 } from "./format.js";
+import { parametresAlerte } from "./modele-alerte.js";
 import { conseilPourCode, ErreurWhatsApp } from "./whatsapp.js";
 
 const MINUTE = 60 * 1000;
@@ -157,6 +158,7 @@ export class Agent {
     this.dernierJournal = new Map(); // anti-répétition du journal
     this.numeroAgent = null; // numéro de l'agent, lu dans les webhooks
     this.derniereAlerteClaude = 0;
+    this.alertesEnVol = new Map(); // alertes envoyées en message libre : renvoyées avec le modèle si Meta les refuse
   }
 
   // ---------- Réception ----------
@@ -205,6 +207,18 @@ export class Agent {
     if (statut?.status !== "failed") return;
     const e = statut.errors?.[0] ?? {};
     const raison = `code ${e.code ?? "?"} : ${e.title ?? e.message ?? "raison inconnue"}${e.error_data?.details ? ` (${e.error_data.details})` : ""}`;
+    const alerte = this.alertesEnVol.get(statut.id);
+    if (alerte) {
+      this.alertesEnVol.delete(statut.id);
+      if (Number(e.code) === 131047 && this.config.modeleAlerte) {
+        this.stockage.journaliser(
+          "info",
+          "Alerte refusée par Meta (plus de 24 h sans message du numéro des alertes) : renvoi avec le modèle de message.",
+        );
+        this.#suivre(this.#alerterParModele(alerte.contenu));
+        return;
+      }
+    }
     this.stockage.marquerEchecEnvoi(statut.id, raison);
     this.stockage.journaliser(
       "erreur",
@@ -417,7 +431,6 @@ export class Agent {
     );
 
     const lignes = [
-      `Nouvelle pré-inscription ${preinscription.id}`,
       `Prospect : ${nomComplet} — ${conv.telephone ? formaterNumero(conv.telephone) : "numéro masqué"}`,
       ...(preinscription.telephone ? [`Autre numéro : ${preinscription.telephone}`] : []),
       `Filière : ${filiere}`,
@@ -428,7 +441,7 @@ export class Agent {
       ...(preinscription.remarques ? [`Remarques : ${preinscription.remarques}`] : []),
       ...(this.config.urlPublique ? [`Détails : ${this.config.urlPublique}/admin/preinscriptions`] : []),
     ];
-    await this.#alerter(lignes.join("\n"));
+    await this.#alerter({ titre: `Nouvelle pré-inscription ${preinscription.id}`, lignes });
 
     return {
       texte:
@@ -442,9 +455,12 @@ export class Agent {
     this.stockage.definirPause(conv.cle, true, motif, "agent");
     this.stockage.journaliser("info", `Conversation confiée à un conseiller : ${nomClient(conv)}.`, motif);
     const lien = this.config.urlPublique
-      ? `\nRépondre : ${this.config.urlPublique}/admin/conversation/${encodeURIComponent(conv.cle)}`
-      : "\nRépondez depuis la page /admin de l'agent.";
-    await this.#alerter(`Un prospect demande un conseiller.\nProspect : ${nomClient(conv)}\nMotif : ${motif}${lien}`);
+      ? `Répondre : ${this.config.urlPublique}/admin/conversation/${encodeURIComponent(conv.cle)}`
+      : "Répondez depuis la page /admin de l'agent.";
+    await this.#alerter({
+      titre: "Un prospect demande un conseiller",
+      lignes: [`Prospect : ${nomClient(conv)}`, `Motif : ${motif}`, lien],
+    });
     return {
       texte:
         "La conversation est confiée à un conseiller : tu ne répondras plus à cette personne tant qu'un membre de l'équipe n'aura pas relancé l'agent. " +
@@ -468,7 +484,11 @@ export class Agent {
     }
   }
 
-  async #alerter(texte) {
+  /**
+   * Prévient le numéro OWNER_WHATSAPP. Si ce numéro a écrit à l'agent depuis moins de 24 heures, l'alerte part en
+   * message libre ; sinon, elle part avec le modèle de message approuvé par Meta (MODELE_ALERTE).
+   */
+  async #alerter(contenu) {
     const proprietaire = this.config.proprietaire;
     if (!proprietaire) return false;
     if (this.numeroAgent && proprietaire === this.numeroAgent) {
@@ -480,13 +500,44 @@ export class Agent {
       );
       return false;
     }
+    if (this.config.modeleAlerte && !this.#fenetreProprietaireOuverte()) {
+      return this.#alerterParModele(contenu);
+    }
+    const texte = ["[ALERTE PROPRIÉTAIRE]", contenu.titre, ...(contenu.lignes ?? [])].join("\n");
     try {
-      await this.whatsapp.envoyerTexte({ telephone: proprietaire }, `[ALERTE PROPRIÉTAIRE]\n${texte}`);
+      const resultats = await this.whatsapp.envoyerTexte({ telephone: proprietaire }, texte);
+      const maintenant = this.horloge();
+      for (const [id, valeur] of this.alertesEnVol) if (valeur.expire < maintenant) this.alertesEnVol.delete(id);
+      for (const resultat of resultats) {
+        for (const message of resultat?.messages ?? []) {
+          if (message?.id) this.alertesEnVol.set(message.id, { contenu, expire: maintenant + HEURE });
+        }
+      }
       return true;
     } catch (err) {
+      if (err instanceof ErreurWhatsApp && Number(err.code) === 131047 && this.config.modeleAlerte) {
+        return this.#alerterParModele(contenu);
+      }
       this.#erreurWhatsApp("Alerte non envoyée au propriétaire", err);
       return false;
     }
+  }
+
+  async #alerterParModele(contenu) {
+    const { modeleAlerte: nom, langueModeleAlerte: langue, proprietaire } = this.config;
+    try {
+      await this.whatsapp.envoyerModele({ telephone: proprietaire }, { nom, langue, parametres: parametresAlerte(contenu) });
+      return true;
+    } catch (err) {
+      this.#erreurWhatsApp(`Alerte non envoyée avec le modèle « ${nom} »`, err);
+      return false;
+    }
+  }
+
+  /** Vrai si le numéro des alertes a écrit à l'agent depuis moins de 24 heures. */
+  #fenetreProprietaireOuverte() {
+    const conv = this.stockage.listeConversations().find((c) => c.telephone === this.config.proprietaire);
+    return Boolean(conv && this.fenetreOuverte(conv));
   }
 
   async #signalerErreurClaude(err) {
@@ -495,7 +546,7 @@ export class Agent {
     const maintenant = this.horloge();
     if (maintenant - this.derniereAlerteClaude < HEURE) return;
     this.derniereAlerteClaude = maintenant;
-    await this.#alerter(`L'agent n'arrive pas à obtenir de réponse de Claude.\n${explication}`);
+    await this.#alerter({ titre: "L'agent n'arrive pas à obtenir de réponse de Claude", lignes: [explication] });
   }
 
   #erreurWhatsApp(contexte, err, niveau = "erreur") {
@@ -577,6 +628,21 @@ export class Agent {
       { telephone: this.config.proprietaire },
       "[TEST] Message de test de votre agent WhatsApp. Si vous le lisez, les alertes fonctionnent.",
     );
+  }
+
+  /** Envoie une alerte de test avec le modèle de message, même si le numéro des alertes n'a pas écrit depuis 24 heures. */
+  async envoyerAlerteTestModele() {
+    const { modeleAlerte: nom, langueModeleAlerte: langue, proprietaire } = this.config;
+    if (!nom) throw new Error("Le modèle d'alerte est désactivé (MODELE_ALERTE vaut « aucun » sur Render).");
+    if (!proprietaire) throw new Error("OWNER_WHATSAPP n'est pas défini sur Render.");
+    if (this.numeroAgent && proprietaire === this.numeroAgent) {
+      throw new Error("OWNER_WHATSAPP est le numéro de l'agent lui-même : choisissez un autre numéro.");
+    }
+    const parametres = parametresAlerte({
+      titre: "Test du modèle d'alerte",
+      lignes: ["si vous lisez ce message, les alertes arrivent même sans échange depuis 24 heures"],
+    });
+    return this.whatsapp.envoyerModele({ telephone: proprietaire }, { nom, langue, parametres });
   }
 
   /** Vrai si le client a écrit il y a moins de 24 heures (fenêtre où WhatsApp autorise les réponses libres). */

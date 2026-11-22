@@ -2,6 +2,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chiffresSeulement, FUSEAU_PAR_DEFAUT } from "./format.js";
+import { LANGUE_MODELE_ALERTE_PAR_DEFAUT, MODELE_ALERTE_PAR_DEFAUT } from "./modele-alerte.js";
 
 const ICI = path.dirname(fileURLToPath(import.meta.url));
 export const RACINE = path.resolve(ICI, "..");
@@ -54,6 +55,7 @@ export function lireConfig(env = process.env) {
   if (manquantes.length > 0) throw new ErreurConfiguration(manquantes);
 
   const port = texte(env, "PORT");
+  const modeleAlerte = texte(env, "MODELE_ALERTE", MODELE_ALERTE_PAR_DEFAUT);
   return {
     anthropicApiKey: texte(env, "ANTHROPIC_API_KEY"),
     modele: texte(env, "CLAUDE_MODEL", MODELE_PAR_DEFAUT),
@@ -65,6 +67,8 @@ export function lireConfig(env = process.env) {
     adminPassword: texte(env, "ADMIN_PASSWORD"),
     graphVersion: versionGraph(texte(env, "GRAPH_API_VERSION", VERSION_GRAPH_PAR_DEFAUT)),
     proprietaire: chiffresSeulement(texte(env, "OWNER_WHATSAPP")),
+    modeleAlerte: modeleAlerte.toLowerCase() === "aucun" ? "" : modeleAlerte,
+    langueModeleAlerte: texte(env, "MODELE_ALERTE_LANGUE", LANGUE_MODELE_ALERTE_PAR_DEFAUT),
     dataDir: path.resolve(RACINE, texte(env, "DATA_DIR", "data")),
     fuseau: fuseauValide(texte(env, "FUSEAU_HORAIRE", FUSEAU_PAR_DEFAUT)),
     urlPublique: texte(env, "RENDER_EXTERNAL_URL", texte(env, "PUBLIC_URL")).replace(/\/+$/, ""),

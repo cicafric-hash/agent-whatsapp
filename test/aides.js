@@ -6,6 +6,7 @@ import path from "node:path";
 import { Agent } from "../src/agent.js";
 import { creerApp } from "../src/app.js";
 import { Stockage } from "../src/stockage.js";
+import { ErreurWhatsApp } from "../src/whatsapp.js";
 
 export const NUMERO_CLIENT = "22375758670";
 export const NUMERO_PROPRIETAIRE = "22300000001";
@@ -33,9 +34,12 @@ export function configTest(surcharges = {}) {
 export class FauxWhatsApp {
   constructor() {
     this.envois = [];
+    this.modeles = [];
+    this.modelesCrees = [];
     this.lus = [];
     this.medias = new Map();
     this.echecEnvoi = null;
+    this.horsFenetre = new Set(); // numéros pour lesquels Meta refuse les messages libres (erreur 131047)
     this.compteur = 0;
     this.pins = [];
     this.abonnements = 0;
@@ -43,9 +47,30 @@ export class FauxWhatsApp {
 
   async envoyerTexte(destinataire, texte) {
     if (this.echecEnvoi) throw this.echecEnvoi;
-    this.envois.push({ destinataire, texte });
+    if (this.horsFenetre.has(destinataire.telephone)) {
+      throw new ErreurWhatsApp({ status: 400, code: 131047, message: "Re-engagement message" });
+    }
     this.compteur += 1;
-    return [{ messaging_product: "whatsapp", messages: [{ id: `wamid.envoi.${this.compteur}` }] }];
+    const id = `wamid.envoi.${this.compteur}`;
+    this.envois.push({ destinataire, texte, id });
+    return [{ messaging_product: "whatsapp", messages: [{ id }] }];
+  }
+
+  async envoyerModele(destinataire, { nom, langue, parametres }) {
+    this.compteur += 1;
+    const id = `wamid.modele.${this.compteur}`;
+    this.modeles.push({ destinataire, nom, langue, parametres, id });
+    return { messaging_product: "whatsapp", messages: [{ id }] };
+  }
+
+  async creerModele(definition) {
+    this.modelesCrees.push(definition);
+    return { id: "999", status: "PENDING", category: definition.category };
+  }
+
+  async statutModele(nom) {
+    const cree = this.modelesCrees.find((m) => m.name === nom);
+    return { data: cree ? [{ name: nom, status: "APPROVED", category: "UTILITY", language: cree.language, id: "999" }] : [] };
   }
 
   async marquerLu(id) {

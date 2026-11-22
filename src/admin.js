@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import express from "express";
 import { apercu, dateLisible, echapperHtml as h, formaterNumero, masquerNumero } from "./format.js";
 import { egaliteSure, jetonFormulaire } from "./securite.js";
+import { definitionModeleAlerte, resumerStatutModele, TEXTE_MODELE_ALERTE } from "./modele-alerte.js";
 import { conseilPourCode, ErreurWhatsApp } from "./whatsapp.js";
 
 const MINUTE = 60 * 1000;
@@ -363,6 +364,10 @@ ${blocAlertes}`,
       ["Identifiant du compte WhatsApp Business", config.wabaId || "non défini"],
       ["Numéro de l'agent (vu dans les messages reçus)", agent.numeroAgent ? formaterNumero(agent.numeroAgent) : "pas encore vu"],
       ["Numéro des alertes (OWNER_WHATSAPP)", config.proprietaire ? formaterNumero(config.proprietaire) : "non défini"],
+      [
+        "Modèle d'alerte (MODELE_ALERTE)",
+        config.modeleAlerte ? `${config.modeleAlerte} (langue ${config.langueModeleAlerte})` : "désactivé",
+      ],
       ["Dossier des données (DATA_DIR)", config.dataDir],
     ]
       .map(([nom, valeur]) => `<dt>${h(nom)}</dt><dd>${h(valeur)}</dd>`)
@@ -381,6 +386,12 @@ ${blocAlertes}`,
 <form method="post" action="/admin/outils/abonner">${champJeton}<button type="submit">Abonner l'application</button></form></div>
 <div class="carte"><h2>4. Envoyer un message test au propriétaire</h2><p class="doux">Envoie un message au numéro OWNER_WHATSAPP. Il n'arrive que si ce numéro a écrit à l'agent dans les dernières 24 heures.</p>
 <form method="post" action="/admin/outils/message-test">${champJeton}<button type="submit">Envoyer le message test</button></form></div>
+<div class="carte"><h2>5. Modèle de message d'alerte</h2>
+<p class="doux">Il permet de recevoir les alertes même quand le numéro OWNER_WHATSAPP n'a pas écrit à l'agent depuis plus de 24 heures. Meta doit l'approuver avant le premier envoi ; chaque alerte envoyée avec le modèle est facturée par Meta. Après le passage à votre vrai numéro, recréez-le si l'identifiant du compte WhatsApp Business a changé.</p>
+<p class="doux">Texte du modèle : « ${h(TEXTE_MODELE_ALERTE)} »</p>
+<form class="ligne" method="post" action="/admin/outils/creer-modele">${champJeton}<button type="submit">a) Créer le modèle d'alerte</button></form>
+<form class="ligne" method="post" action="/admin/outils/statut-modele">${champJeton}<button type="submit" class="secondaire">b) Vérifier son statut</button></form>
+<form class="ligne" method="post" action="/admin/outils/alerte-modele">${champJeton}<button type="submit" class="secondaire">c) Envoyer une alerte test avec le modèle</button></form></div>
 <div class="carte"><h2>Configuration actuelle</h2><dl class="config">${resume}</dl></div>`,
     });
   }
@@ -415,6 +426,33 @@ ${blocAlertes}`,
     executerOutil(res, req, "Message test au propriétaire", async () => {
       const reponse = await agent.envoyerMessageTest();
       return { envoye_a: masquerNumero(config.proprietaire), reponse };
+    }),
+  );
+
+  const exigerModele = () => {
+    if (!config.modeleAlerte) throw new Error("Le modèle d'alerte est désactivé (MODELE_ALERTE vaut « aucun » sur Render).");
+  };
+  routeur.post("/outils/creer-modele", (req, res) =>
+    executerOutil(res, req, "Créer le modèle d'alerte", async () => {
+      exigerModele();
+      const reponse = await whatsapp.creerModele(definitionModeleAlerte(config.modeleAlerte, config.langueModeleAlerte));
+      return {
+        resume: `Modèle « ${config.modeleAlerte} » envoyé à Meta pour examen. Vérifiez son statut dans quelques minutes.`,
+        reponse_meta: reponse,
+      };
+    }),
+  );
+  routeur.post("/outils/statut-modele", (req, res) =>
+    executerOutil(res, req, "Vérifier le statut du modèle", async () => {
+      exigerModele();
+      const reponse = await whatsapp.statutModele(config.modeleAlerte);
+      return { resume: resumerStatutModele(config.modeleAlerte, reponse), reponse_meta: reponse };
+    }),
+  );
+  routeur.post("/outils/alerte-modele", (req, res) =>
+    executerOutil(res, req, "Alerte test avec le modèle", async () => {
+      const reponse = await agent.envoyerAlerteTestModele();
+      return { envoye_a: masquerNumero(config.proprietaire), reponse_meta: reponse };
     }),
   );
 

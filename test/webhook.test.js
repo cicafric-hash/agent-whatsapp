@@ -343,3 +343,83 @@ describe("réception des messages (POST)", () => {
     assert.ok(stockage.listeJournal().some((e) => /numéro de l'agent lui-même/.test(e.message)));
   });
 });
+
+describe("alertes avec le modèle de message", () => {
+  const AVEC_MODELE = { modeleAlerte: "alerte_agent", langueModeleAlerte: "fr" };
+  const transfert = () => [
+    reponseOutil("demander_un_humain", { motif: "Veut connaître les frais exacts." }),
+    reponseTexte("Un conseiller va vous répondre ici."),
+  ];
+
+  it("utilise le modèle quand le numéro des alertes n'a pas écrit depuis 24 heures", async () => {
+    const { base, config, agent, whatsapp } = await preparer({ reponses: transfert(), config: AVEC_MODELE });
+    await posterWebhook(base, webhook({ messages: [messageTexte("Combien coûte la licence ?")] }), config.appSecret);
+    await agent.attendreInactivite();
+
+    assert.equal(whatsapp.envois.filter((e) => e.destinataire.telephone === NUMERO_PROPRIETAIRE).length, 0);
+    assert.equal(whatsapp.modeles.length, 1);
+    const [envoi] = whatsapp.modeles;
+    assert.deepEqual(envoi.destinataire, { telephone: NUMERO_PROPRIETAIRE });
+    assert.equal(envoi.nom, "alerte_agent");
+    assert.equal(envoi.langue, "fr");
+    assert.equal(envoi.parametres.length, 2);
+    assert.equal(envoi.parametres[0], "un prospect demande un conseiller");
+    assert.match(envoi.parametres[1], /^Prospect : Awa \(\+223 75 75 86 70\) · Motif : Veut connaître les frais exacts · Répondez/);
+    for (const parametre of envoi.parametres) {
+      assert.equal(/[\n\t]| {5,}/.test(parametre), false, "WhatsApp refuse les retours à la ligne et les longues suites d'espaces");
+    }
+  });
+
+  it("envoie un message libre quand le numéro des alertes a écrit depuis moins de 24 heures", async () => {
+    const { base, config, agent, whatsapp } = await preparer({
+      reponses: [reponseTexte("Bonjour !"), ...transfert()],
+      config: AVEC_MODELE,
+    });
+    await posterWebhook(
+      base,
+      webhook({ messages: [messageTexte("Bonjour, ici l'équipe", { de: NUMERO_PROPRIETAIRE })], contacts: [{ profile: { name: "Admissions" }, wa_id: NUMERO_PROPRIETAIRE }] }),
+      config.appSecret,
+    );
+    await agent.attendreInactivite();
+    await posterWebhook(base, webhook({ messages: [messageTexte("Combien coûte la licence ?")] }), config.appSecret);
+    await agent.attendreInactivite();
+
+    assert.equal(whatsapp.modeles.length, 0);
+    const alerte = whatsapp.envois.find((e) => e.destinataire.telephone === NUMERO_PROPRIETAIRE && e.texte.startsWith("[ALERTE"));
+    assert.ok(alerte);
+    assert.match(alerte.texte, /^\[ALERTE PROPRIÉTAIRE\]\nUn prospect demande un conseiller\nProspect : Awa/);
+  });
+
+  it("renvoie avec le modèle une alerte que Meta signale non délivrée (code 131047)", async () => {
+    const { base, config, agent, whatsapp } = await preparer({
+      reponses: [reponseTexte("Bonjour !"), ...transfert()],
+      config: AVEC_MODELE,
+    });
+    await posterWebhook(base, webhook({ messages: [messageTexte("Bonjour", { de: NUMERO_PROPRIETAIRE })] }), config.appSecret);
+    await agent.attendreInactivite();
+    await posterWebhook(base, webhook({ messages: [messageTexte("Combien coûte la licence ?")] }), config.appSecret);
+    await agent.attendreInactivite();
+    const alerte = whatsapp.envois.find((e) => e.destinataire.telephone === NUMERO_PROPRIETAIRE && e.texte.startsWith("[ALERTE"));
+    assert.ok(alerte);
+
+    const statut = { id: alerte.id, status: "failed", recipient_id: NUMERO_PROPRIETAIRE, errors: [{ code: 131047, title: "Re-engagement message" }] };
+    await posterWebhook(base, webhook({ statuses: [statut] }), config.appSecret);
+    await agent.attendreInactivite();
+    assert.equal(whatsapp.modeles.length, 1);
+    assert.equal(whatsapp.modeles[0].parametres[0], "un prospect demande un conseiller");
+  });
+
+  it("bascule tout de suite sur le modèle si Meta refuse le message libre (erreur 131047)", async () => {
+    const { base, config, agent, whatsapp } = await preparer({
+      reponses: [reponseTexte("Bonjour !"), ...transfert()],
+      config: AVEC_MODELE,
+    });
+    await posterWebhook(base, webhook({ messages: [messageTexte("Bonjour", { de: NUMERO_PROPRIETAIRE })] }), config.appSecret);
+    await agent.attendreInactivite();
+    whatsapp.horsFenetre.add(NUMERO_PROPRIETAIRE);
+    await posterWebhook(base, webhook({ messages: [messageTexte("Combien coûte la licence ?")] }), config.appSecret);
+    await agent.attendreInactivite();
+    assert.equal(whatsapp.modeles.length, 1);
+    assert.equal(whatsapp.modeles[0].nom, "alerte_agent");
+  });
+});

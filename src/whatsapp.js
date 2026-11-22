@@ -38,6 +38,15 @@ export function conseilPourCode(code) {
       return "Numéro non enregistré : utilisez le bouton « Enregistrer le numéro » de la page Outils.";
     case 133016:
       return "Trop d'essais d'enregistrement : attendez 72 heures.";
+    case 132000:
+    case 132012:
+    case 132018:
+      return "Les variables envoyées ne correspondent pas au modèle : vérifiez que le modèle d'alerte a été créé par le bouton de la page Outils.";
+    case 132001:
+      return "Modèle introuvable ou pas encore approuvé : créez-le dans la page Outils, puis vérifiez son statut.";
+    case 132015:
+    case 132016:
+      return "Le modèle a été mis en pause ou désactivé par Meta : vérifiez son statut dans la page Outils ou dans WhatsApp Manager.";
     default:
       return null;
   }
@@ -134,10 +143,38 @@ export class WhatsApp {
   }
 
   abonnerApplication() {
+    return this.appel("POST", `${this.#compte()}/subscribed_apps`);
+  }
+
+  /** Envoie un modèle de message approuvé par Meta, avec les variables de son corps ({{1}}, {{2}}…). */
+  envoyerModele(destinataire, { nom, langue, parametres }) {
+    return this.appel("POST", `${this.phoneNumberId}/messages`, {
+      messaging_product: "whatsapp",
+      ...WhatsApp.adresse(destinataire),
+      type: "template",
+      template: {
+        name: nom,
+        language: { code: langue },
+        components: [{ type: "body", parameters: parametres.map((texte) => ({ type: "text", text: texte })) }],
+      },
+    });
+  }
+
+  /** Crée un modèle de message sur le compte WhatsApp Business ; Meta l'examine avant de l'approuver. */
+  creerModele(definition) {
+    return this.appel("POST", `${this.#compte()}/message_templates`, definition);
+  }
+
+  /** Renvoie les modèles du compte qui portent ce nom, avec leur statut (PENDING, APPROVED, REJECTED…). */
+  statutModele(nom) {
+    return this.appel("GET", `${this.#compte()}/message_templates?name=${encodeURIComponent(nom)}`);
+  }
+
+  #compte() {
     if (!this.wabaId) {
       throw new Error("WHATSAPP_BUSINESS_ACCOUNT_ID n'est pas défini dans Render : ajoutez l'identifiant du compte WhatsApp Business.");
     }
-    return this.appel("POST", `${this.wabaId}/subscribed_apps`);
+    return this.wabaId;
   }
 
   /** Télécharge un média reçu (photo) et le renvoie en base64. */

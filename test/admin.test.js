@@ -102,6 +102,42 @@ describe("page /admin", () => {
     assert.match(accepte, /Enregistrer le numéro : réussi/);
     assert.deepEqual(whatsapp.pins, ["123456"]);
   });
+
+  it("crée le modèle d'alerte, affiche son statut et envoie une alerte test", async () => {
+    const { base, config, whatsapp } = await preparer({ config: { modeleAlerte: "alerte_agent", langueModeleAlerte: "fr" } });
+    const jeton = jetonFormulaire(config.adminPassword);
+    const poster = (chemin) => {
+      const { body, ...entetes } = formulaire({ jeton });
+      return fetch(`${base}/admin/outils/${chemin}`, { method: "POST", headers: { authorization: autorisation(config.adminPassword), ...entetes }, body });
+    };
+
+    const creation = await (await poster("creer-modele")).text();
+    assert.match(creation, /Créer le modèle d&#39;alerte : réussi/);
+    assert.match(creation, /envoyé à Meta pour examen/);
+    assert.equal(whatsapp.modelesCrees.length, 1);
+    const [definition] = whatsapp.modelesCrees;
+    assert.equal(definition.name, "alerte_agent");
+    assert.equal(definition.language, "fr");
+    assert.equal(definition.category, "UTILITY");
+
+    const statut = await (await poster("statut-modele")).text();
+    assert.match(statut, /APPROVED — approuvé/);
+
+    const test = await (await poster("alerte-modele")).text();
+    assert.match(test, /Alerte test avec le modèle : réussi/);
+    assert.equal(whatsapp.modeles.length, 1);
+    assert.equal(whatsapp.modeles[0].parametres[0], "test du modèle d'alerte");
+  });
+
+  it("explique que le modèle est désactivé quand MODELE_ALERTE vaut « aucun »", async () => {
+    const { base, config, whatsapp } = await preparer({ config: { modeleAlerte: "" } });
+    const { body, ...entetes } = formulaire({ jeton: jetonFormulaire(config.adminPassword) });
+    const page = await (
+      await fetch(`${base}/admin/outils/creer-modele`, { method: "POST", headers: { authorization: autorisation(config.adminPassword), ...entetes }, body })
+    ).text();
+    assert.match(page, /modèle d&#39;alerte est désactivé/);
+    assert.equal(whatsapp.modelesCrees.length, 0);
+  });
 });
 
 describe("pages publiques", () => {
