@@ -1,11 +1,11 @@
-// Enregistrement des conversations, commandes et événements dans des fichiers JSON (dossier DATA_DIR).
+// Enregistrement des conversations, pré-inscriptions et événements dans des fichiers JSON (dossier DATA_DIR).
 // Chaque écriture passe par un fichier temporaire puis un renommage : un fichier n'est jamais à moitié écrit.
 import fs from "node:fs";
 import path from "node:path";
 
 const FICHIERS = {
   conversations: () => ({}),
-  commandes: () => [],
+  preinscriptions: () => [],
   traites: () => ({}),
   journal: () => [],
 };
@@ -137,16 +137,16 @@ export class Stockage {
     );
   }
 
-  // ---------- Commandes ----------
+  // ---------- Pré-inscriptions ----------
 
-  ajouterCommande(commande) {
-    this.donnees.commandes.push(commande);
-    this.sauver("commandes");
-    return commande;
+  ajouterPreinscription(preinscription) {
+    this.donnees.preinscriptions.push(preinscription);
+    this.sauver("preinscriptions");
+    return preinscription;
   }
 
-  listeCommandes() {
-    return [...this.donnees.commandes].reverse();
+  listePreinscriptions() {
+    return [...this.donnees.preinscriptions].reverse();
   }
 
   // ---------- Dédoublonnage des messages reçus ----------
@@ -185,20 +185,21 @@ export class Stockage {
 
   // ---------- Suppression et nettoyage ----------
 
-  /** Efface la conversation d'un client et anonymise ses commandes (les montants restent pour la comptabilité). */
+  /** Efface la conversation d'une personne et anonymise ses pré-inscriptions (la filière et le niveau restent pour les statistiques). */
   supprimerClient(cle) {
     delete this.donnees.conversations[cle];
-    for (const commande of this.donnees.commandes) {
-      if (commande.client !== cle) continue;
-      commande.client = null;
-      commande.telephoneWhatsApp = null;
-      commande.nom_client = "(supprimé à la demande du client)";
-      commande.telephone = "";
-      commande.adresse_ou_quartier = "(supprimée)";
-      commande.remarques = "";
+    for (const preinscription of this.donnees.preinscriptions) {
+      if (preinscription.client !== cle) continue;
+      preinscription.client = null;
+      preinscription.telephoneWhatsApp = null;
+      preinscription.nom_complet = "(supprimé à la demande de la personne)";
+      preinscription.telephone = "";
+      preinscription.dernier_diplome = "";
+      preinscription.ville = "";
+      preinscription.remarques = "";
     }
     this.sauver("conversations");
-    this.sauver("commandes");
+    this.sauver("preinscriptions");
   }
 
   /** Supprime les messages de plus de 30 jours et les identifiants de messages de plus de 48 heures. */

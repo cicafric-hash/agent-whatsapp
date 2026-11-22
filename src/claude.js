@@ -19,53 +19,50 @@ const MAX_TOURS_OUTILS = 5;
 
 export const OUTILS = [
   {
-    name: "enregistrer_commande",
+    name: "enregistrer_preinscription",
     description:
-      "Enregistre une commande ferme et prévient le propriétaire. À appeler une seule fois par commande, " +
-      "uniquement après avoir récapitulé au client les articles, quantités, prix, frais de livraison, total, " +
-      "adresse et mode de paiement, ET après sa confirmation explicite. Utilise seulement les produits et les prix de la fiche entreprise.",
+      "Enregistre la pré-inscription d'un prospect et prévient l'équipe des admissions. À appeler une seule fois par prospect, " +
+      "uniquement après lui avoir récapitulé son nom, la filière, le niveau d'entrée, le rythme, son dernier diplôme, sa ville " +
+      "et son intérêt pour le concours de bourses, ET après sa confirmation explicite. La filière doit figurer dans la fiche.",
     strict: true,
     input_schema: {
       type: "object",
       properties: {
-        nom_client: { type: "string", description: "Nom du client." },
-        articles: {
-          type: "array",
-          description: "Articles commandés.",
-          items: {
-            type: "object",
-            properties: {
-              produit: { type: "string", description: "Nom du produit, tel qu'il est écrit dans la fiche." },
-              quantite: { type: "integer", description: "Quantité commandée." },
-              prix_unitaire: { type: "number", description: "Prix unitaire en FCFA, tiré de la fiche." },
-            },
-            required: ["produit", "quantite", "prix_unitaire"],
-            additionalProperties: false,
-          },
-        },
-        frais_livraison: { type: "number", description: "Frais de livraison en FCFA, 0 s'il n'y en a pas." },
-        total: { type: "number", description: "Total à payer en FCFA, livraison comprise." },
-        adresse_ou_quartier: {
+        nom_complet: { type: "string", description: "Nom et prénom du prospect." },
+        filiere: { type: "string", description: "Filière choisie, telle qu'elle est écrite dans la fiche." },
+        niveau_entree: {
           type: "string",
-          description: "Adresse, quartier ou ville de livraison, ou « retrait en boutique ».",
+          enum: ["Licence 1", "Licence 2", "Licence 3", "Master 1", "Master 2", "À déterminer"],
+          description: "Niveau d'entrée souhaité.",
         },
-        mode_paiement: { type: "string", description: "Mode de paiement choisi par le client." },
+        rythme: {
+          type: "string",
+          enum: ["Jour", "Soir", "En ligne", "À déterminer"],
+          description: "Rythme de cours souhaité.",
+        },
+        dernier_diplome: {
+          type: "string",
+          description: "Dernier diplôme obtenu ou en préparation, avec la série et l'année si connues (ex. « Bac TSE 2026 », « BTS Comptabilité »).",
+        },
+        ville: { type: "string", description: "Ville ou quartier du prospect." },
+        concours_bourses: { type: "boolean", description: "Vrai si le prospect veut passer le concours de bourses d'excellence." },
         telephone: {
           type: "string",
-          description: "Numéro à appeler pour la livraison s'il diffère du numéro WhatsApp, sinon chaîne vide.",
+          description: "Autre numéro à rappeler s'il diffère du numéro WhatsApp, sinon chaîne vide.",
         },
         remarques: {
           type: "string",
-          description: "Précisions utiles (taille, couleur, horaire de livraison…), sinon chaîne vide.",
+          description: "Précisions utiles (questions en suspens, disponibilité pour un appel…), sinon chaîne vide.",
         },
       },
       required: [
-        "nom_client",
-        "articles",
-        "frais_livraison",
-        "total",
-        "adresse_ou_quartier",
-        "mode_paiement",
+        "nom_complet",
+        "filiere",
+        "niveau_entree",
+        "rythme",
+        "dernier_diplome",
+        "ville",
+        "concours_bourses",
         "telephone",
         "remarques",
       ],
@@ -75,8 +72,8 @@ export const OUTILS = [
   {
     name: "demander_un_humain",
     description:
-      "Confie la conversation à une personne de l'entreprise : tu ne réponds plus à ce client et le propriétaire est prévenu. " +
-      "À utiliser si le client demande à parler à quelqu'un, s'il est mécontent ou si sa demande sort de la fiche entreprise.",
+      "Confie la conversation à un conseiller de l'équipe : tu ne réponds plus à cette personne et l'équipe est prévenue. " +
+      "À utiliser si la personne demande à parler à quelqu'un, si elle est mécontente ou si sa demande sort de la fiche.",
     strict: true,
     input_schema: {
       type: "object",

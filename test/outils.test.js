@@ -94,12 +94,18 @@ describe("configuration et connaissances", () => {
     assert.equal(config.port, 0);
   });
 
-  it("construit le prompt système à partir des fichiers du dossier connaissances", () => {
+  it("construit le prompt système à partir de la fiche EUTG et des consignes", () => {
     const connaissances = chargerConnaissances();
-    assert.match(connaissances.systeme, /<consignes>[\s\S]*Méthode de vente[\s\S]*<\/consignes>/);
-    assert.match(connaissances.systeme, /<fiche_entreprise>[\s\S]*Produits et prix[\s\S]*<\/fiche_entreprise>/);
-    assert.equal(connaissances.nomEntreprise, null, "la fiche d'exemple n'a pas encore de vrai nom");
-    assert.equal(connaissances.avertissements.length, 1);
+    assert.match(connaissances.systeme, /<consignes>[\s\S]*conseiller d'orientation et d'admission de l'EUTG[\s\S]*<\/consignes>/);
+    assert.match(connaissances.systeme, /<fiche_entreprise>[\s\S]*Concours de bourses d'excellence 2026-2027[\s\S]*<\/fiche_entreprise>/);
+    assert.equal(connaissances.nomEntreprise, "Université d'Excellence EUTG (École Universitaire de Technologie et de Gestion)");
+    assert.equal(connaissances.avertissements.length, 1, "seul l'avertissement « à compléter » doit rester");
+    assert.match(connaissances.avertissements[0], /\[à compléter\]/);
+  });
+
+  it("ne donne aucun montant de frais dans la fiche EUTG", () => {
+    const { fiche } = chargerConnaissances();
+    assert.equal(/\d[\d\s]*(F\s?CFA|FCFA)/i.test(fiche), false, "la fiche ne doit contenir aucun montant en FCFA tant que l'EUTG ne l'a pas fourni");
   });
 
   it("lit le nom de l'entreprise dans la fiche", () => {

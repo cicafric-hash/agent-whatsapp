@@ -2,28 +2,29 @@
 
 agent-whatsapp joue le rôle commercial de l'EUTG pour répondre automatiquement aux requêtes des prospects.
 
-Cet agent répond à vos clients sur WhatsApp, 24 h/24, à partir de la fiche de votre entreprise. Il utilise l'API WhatsApp Cloud de Meta et l'API Claude d'Anthropic, et s'héberge sur Render.
+Cet agent répond aux prospects de l'EUTG sur WhatsApp, 24 h/24 : il les oriente vers une formation, explique l'admission et les bourses, puis enregistre leur pré-inscription. Il utilise l'API WhatsApp Cloud de Meta et l'API Claude d'Anthropic, et s'héberge sur Render.
 
 ## Ce que fait l'agent
 
 - Il répond aux messages texte, aux boutons, aux positions partagées et aux photos (il les voit).
 - Il demande poliment d'écrire quand il reçoit un message vocal, une vidéo ou un document.
 - Il attend 3 secondes de silence et répond en une seule fois aux messages envoyés à la suite.
-- Il enregistre les commandes confirmées par le client et vous envoie une alerte sur WhatsApp.
-- Il passe la main à une personne de l'équipe quand le client le demande ou quand la demande sort de la fiche. Vous répondez alors depuis la page `/admin`.
-- Il efface les données d'un client qui lui écrit « SUPPRIMER MES DONNÉES ».
-- Il traite au plus 30 messages par client et par heure, pour éviter les abus.
+- Il enregistre les pré-inscriptions confirmées par les prospects et vous envoie une alerte sur WhatsApp.
+- Il ne donne jamais de montant de frais : la grille n'est pas publiée, il propose qu'un conseiller l'envoie.
+- Il passe la main à un conseiller quand le prospect le demande ou quand la demande sort de la fiche. Vous répondez alors depuis la page `/admin`.
+- Il efface les données d'une personne qui lui écrit « SUPPRIMER MES DONNÉES ».
+- Il traite au plus 30 messages par personne et par heure, pour éviter les abus.
 
 ## Ce que vous modifiez vous-même, sans coder
 
 | Fichier | Contenu |
 | --- | --- |
-| `connaissances/fiche-entreprise.md` | Produits, prix, livraison, paiement, horaires, questions fréquentes |
+| `connaissances/fiche-entreprise.md` | Formations, admission, frais, bourses, contacts, questions fréquentes de l'EUTG |
 | `connaissances/consignes.md` | Rôle, ton et limites de l'agent |
 
 Pour modifier un fichier : sur GitHub, ouvrez-le, cliquez sur l'icône crayon (**Edit this file**), changez le texte, puis cliquez sur **Commit changes**. Render redéploie l'agent automatiquement en quelques minutes.
 
-La fiche fournie contient des exemples entre crochets `[ex. …]`. Remplacez-les tous par vos vraies informations : tant qu'il en reste, la page `/admin` affiche un avertissement.
+La fiche a été remplie avec les informations du site www.eutg-mali.com. Ce que le site ne publie pas (frais, moyens de paiement, dates, horaires, logement, débouchés de l'Agronomie) est marqué `[à compléter]` : l'agent répond alors qu'un conseiller précisera. Tant qu'il en reste, la page `/admin` affiche un avertissement.
 
 ## Mettre l'agent en ligne sur Render
 
@@ -41,7 +42,7 @@ La fiche fournie contient des exemples entre crochets `[ex. …]`. Remplacez-les
 5. Ouvrez `https://VOTRE-ADRESSE.onrender.com/health` : la page doit afficher `{"status":"ok"}`.
 6. Dans **Settings**, indiquez `/health` comme **Health Check Path**.
 
-En production, passez en **Starter**, ajoutez un disque (**Disks** : Mount Path `/var/data`, 1 Go) et la variable `DATA_DIR` = `/var/data`. Sans disque, les conversations et les commandes s'effacent à chaque redéploiement.
+En production, passez en **Starter**, ajoutez un disque (**Disks** : Mount Path `/var/data`, 1 Go) et la variable `DATA_DIR` = `/var/data`. Sans disque, les conversations et les pré-inscriptions s'effacent à chaque redéploiement.
 
 ## Variables d'environnement
 
@@ -74,8 +75,8 @@ Dans votre application Meta, ouvrez **WhatsApp > Configuration** :
 
 Ouvrez `https://VOTRE-ADRESSE.onrender.com/admin`. Identifiant : `admin`. Mot de passe : la valeur de `ADMIN_PASSWORD`.
 
-- **Conversations** : chaque client, ses messages, la fenêtre de 24 heures pendant laquelle WhatsApp autorise une réponse, un champ pour répondre vous-même et un bouton pour mettre l'agent en pause ou le relancer. Répondre vous-même met l'agent en pause pour ce client.
-- **Commandes** : les commandes enregistrées par l'agent, avec leur référence.
+- **Conversations** : chaque prospect, ses messages, la fenêtre de 24 heures pendant laquelle WhatsApp autorise une réponse, un champ pour répondre vous-même et un bouton pour mettre l'agent en pause ou le relancer. Répondre vous-même met l'agent en pause pour ce prospect.
+- **Pré-inscriptions** : les pré-inscriptions enregistrées par l'agent, avec leur référence, la filière, le niveau d'entrée, le rythme et l'intérêt pour le concours de bourses.
 - **Outils** : tester la connexion WhatsApp, enregistrer votre numéro avec un code PIN à 6 chiffres, abonner l'application au compte WhatsApp, envoyer un message test au propriétaire.
 - **Journal** : les erreurs et les événements, avec un conseil pour les codes d'erreur WhatsApp courants.
 

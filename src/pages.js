@@ -34,13 +34,13 @@ export function pageConfidentialite(nomEntreprise) {
 <h2>Données collectées</h2>
 <ul><li>Votre numéro WhatsApp ou l'identifiant fourni par WhatsApp, et le nom de votre profil.</li>
 <li>Le contenu de vos messages et des photos que vous nous envoyez.</li>
-<li>Les informations de commande que vous nous donnez : articles, adresse ou quartier de livraison, mode de paiement.</li></ul>
+<li>Les informations de pré-inscription que vous nous donnez : nom, filière souhaitée, niveau d'entrée, rythme, dernier diplôme, ville.</li></ul>
 <h2>Pourquoi</h2>
-<p>Pour répondre à vos questions, préparer et livrer vos commandes, et assurer le service client. Un assistant automatique rédige une partie des réponses ; une personne de l'équipe peut reprendre la conversation à tout moment.</p>
+<p>Pour répondre à vos questions sur nos formations, enregistrer votre pré-inscription et vous accompagner jusqu'à votre inscription. Un assistant automatique rédige une partie des réponses ; un conseiller de l'équipe peut reprendre la conversation à tout moment.</p>
 <h2>Prestataires</h2>
 <p>Vos messages transitent par Meta (WhatsApp). Les réponses automatiques sont rédigées avec Claude, d'Anthropic. Le service est hébergé chez Render. Nous ne vendons pas vos données.</p>
 <h2>Durée de conservation</h2>
-<p>Les conversations sont effacées automatiquement après 30 jours. Les informations de commande sont conservées le temps nécessaire à la gestion de la commande et au respect de nos obligations légales.</p>
+<p>Les conversations sont effacées automatiquement après 30 jours. Les informations de pré-inscription sont conservées le temps nécessaire au traitement de votre candidature et au respect de nos obligations légales.</p>
 <h2>Vos droits</h2>
 <p>Vous pouvez demander l'accès à vos données, leur correction ou leur suppression. Pour tout supprimer immédiatement, envoyez sur WhatsApp le message <code>SUPPRIMER MES DONNÉES</code> (voir <a href="/suppression-donnees">la page dédiée</a>).</p>
 <p>Ces droits sont prévus par la loi malienne n° 2013-015 du 21 mai 2013 relative à la protection des données à caractère personnel. Vous pouvez aussi saisir l'Autorité de protection des données à caractère personnel (APDP).</p>`,
@@ -51,10 +51,10 @@ export function pageSuppressionDonnees(nomEntreprise) {
   return gabarit(
     "Supprimer mes données",
     `<h1>Supprimer mes données</h1>
-<p>Pour effacer vos données chez ${nom(nomEntreprise)}, envoyez ce message, sur WhatsApp, au numéro de l'entreprise :</p>
+<p>Pour effacer vos données chez ${nom(nomEntreprise)}, envoyez ce message, sur WhatsApp, au numéro auquel vous nous avez écrit :</p>
 <p><code>SUPPRIMER MES DONNÉES</code></p>
-<p>La suppression est immédiate et un message vous la confirme : l'historique de vos conversations est effacé, et vos coordonnées sont retirées de vos commandes.</p>
-<p>Vous pouvez aussi demander la suppression à une personne de l'équipe sur le même numéro.</p>
+<p>La suppression est immédiate et un message vous la confirme : l'historique de vos conversations est effacé, et vos coordonnées sont retirées de vos pré-inscriptions.</p>
+<p>Vous pouvez aussi demander la suppression à un conseiller de l'équipe sur le même numéro.</p>
 <p><a href="/confidentialite">Politique de confidentialité</a></p>`,
   );
 }

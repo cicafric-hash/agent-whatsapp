@@ -4,7 +4,6 @@ import {
   chiffresSeulement,
   dateLisible,
   estDemandeSuppression,
-  formaterMontant,
   formaterNumero,
   formaterPourWhatsApp,
   FUSEAU_PAR_DEFAUT,
@@ -29,9 +28,9 @@ export const MESSAGES = {
   erreur:
     "Désolé, je rencontre un petit souci technique. Réessayez dans quelques minutes ; une personne de l'équipe peut aussi vous répondre.",
   refus:
-    "Je ne peux pas répondre à cette demande. Je peux en revanche vous aider pour nos produits, nos prix ou une commande.",
+    "Je ne peux pas répondre à cette demande. Je peux en revanche vous renseigner sur nos formations, l'admission ou les bourses.",
   vide: "Merci pour votre message ! Pouvez-vous préciser votre demande ?",
-  transfert: "Une personne de notre équipe va vous répondre ici très bientôt.",
+  transfert: "Un conseiller de notre équipe va vous répondre ici très bientôt.",
   suppression:
     "C'est fait : vos messages et vos informations personnelles ont été supprimés de notre système. Vous pouvez nous écrire à nouveau à tout moment.",
 };
@@ -138,7 +137,7 @@ function genererReference(maintenant) {
   const d = new Date(maintenant);
   const jour = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
   const hasard = Math.floor(1000 + Math.random() * 9000);
-  return `CMD-${jour}-${hasard}`;
+  return `PRE-${jour}-${hasard}`;
 }
 
 export class Agent {
@@ -380,77 +379,76 @@ export class Agent {
   // ---------- Outils appelés par Claude ----------
 
   async #executerOutil(conv, nom, entree) {
-    if (nom === "enregistrer_commande") return this.#enregistrerCommande(conv, entree ?? {});
+    if (nom === "enregistrer_preinscription") return this.#enregistrerPreinscription(conv, entree ?? {});
     if (nom === "demander_un_humain") return this.#demanderUnHumain(conv, entree ?? {});
     return { texte: `Outil inconnu : ${nom}`, erreur: true };
   }
 
-  async #enregistrerCommande(conv, e) {
-    const articles = (Array.isArray(e.articles) ? e.articles : [])
-      .map((a) => ({
-        produit: String(a?.produit ?? "").trim(),
-        quantite: Number(a?.quantite),
-        prix_unitaire: Number(a?.prix_unitaire),
-      }))
-      .filter((a) => a.produit && Number.isFinite(a.quantite) && a.quantite > 0 && Number.isFinite(a.prix_unitaire));
-    if (articles.length === 0) {
-      return { texte: "Commande non enregistrée : aucun article valide. Redemande au client ce qu'il souhaite commander.", erreur: true };
+  async #enregistrerPreinscription(conv, e) {
+    const texte = (valeur) => String(valeur ?? "").trim();
+    const nomComplet = texte(e.nom_complet) || conv.nom || "";
+    const filiere = texte(e.filiere);
+    if (!nomComplet || !filiere) {
+      return {
+        texte: "Pré-inscription non enregistrée : il manque le nom du prospect ou la filière choisie. Demande-les-lui, puis réessaie.",
+        erreur: true,
+      };
     }
     const maintenant = this.horloge();
-    const sousTotal = articles.reduce((somme, a) => somme + a.quantite * a.prix_unitaire, 0);
-    const fraisLivraison = Number(e.frais_livraison) || 0;
-    const total = Number(e.total) || sousTotal + fraisLivraison;
-    const commande = {
+    const preinscription = {
       id: genererReference(maintenant),
       creeeLe: new Date(maintenant).toISOString(),
       client: conv.cle,
       telephoneWhatsApp: conv.telephone,
-      nom_client: String(e.nom_client ?? "").trim() || conv.nom || "(non précisé)",
-      articles,
-      frais_livraison: fraisLivraison,
-      total,
-      sous_total_calcule: sousTotal,
-      adresse_ou_quartier: String(e.adresse_ou_quartier ?? "").trim(),
-      mode_paiement: String(e.mode_paiement ?? "").trim(),
-      telephone: String(e.telephone ?? "").trim(),
-      remarques: String(e.remarques ?? "").trim(),
+      nom_complet: nomComplet,
+      filiere,
+      niveau_entree: texte(e.niveau_entree) || "À déterminer",
+      rythme: texte(e.rythme) || "À déterminer",
+      dernier_diplome: texte(e.dernier_diplome),
+      ville: texte(e.ville),
+      concours_bourses: e.concours_bourses === true,
+      telephone: texte(e.telephone),
+      remarques: texte(e.remarques),
     };
-    const ecart = Math.abs(total - (sousTotal + fraisLivraison)) >= 1;
-    this.stockage.ajouterCommande(commande);
-    this.stockage.journaliser("info", `Nouvelle commande ${commande.id} (${formaterMontant(total)} FCFA) de ${nomClient(conv)}.`);
+    this.stockage.ajouterPreinscription(preinscription);
+    this.stockage.journaliser(
+      "info",
+      `Nouvelle pré-inscription ${preinscription.id} : ${filiere} (${preinscription.niveau_entree}) pour ${nomClient(conv)}.`,
+    );
 
     const lignes = [
-      `Nouvelle commande ${commande.id}`,
-      `Client : ${commande.nom_client} — ${conv.telephone ? formaterNumero(conv.telephone) : "numéro masqué"}`,
-      ...articles.map((a) => `- ${a.quantite} × ${a.produit} : ${formaterMontant(a.prix_unitaire)} FCFA`),
-      `Livraison : ${formaterMontant(fraisLivraison)} FCFA`,
-      `Total : ${formaterMontant(total)} FCFA${ecart ? ` (attention : articles + livraison = ${formaterMontant(sousTotal + fraisLivraison)} FCFA)` : ""}`,
-      `Adresse : ${commande.adresse_ou_quartier || "non précisée"}`,
-      `Paiement : ${commande.mode_paiement || "non précisé"}`,
-      ...(commande.telephone ? [`Téléphone de livraison : ${commande.telephone}`] : []),
-      ...(commande.remarques ? [`Remarques : ${commande.remarques}`] : []),
-      ...(this.config.urlPublique ? [`Détails : ${this.config.urlPublique}/admin/commandes`] : []),
+      `Nouvelle pré-inscription ${preinscription.id}`,
+      `Prospect : ${nomComplet} — ${conv.telephone ? formaterNumero(conv.telephone) : "numéro masqué"}`,
+      ...(preinscription.telephone ? [`Autre numéro : ${preinscription.telephone}`] : []),
+      `Filière : ${filiere}`,
+      `Niveau d'entrée : ${preinscription.niveau_entree} · Rythme : ${preinscription.rythme}`,
+      `Dernier diplôme : ${preinscription.dernier_diplome || "non précisé"}`,
+      `Ville : ${preinscription.ville || "non précisée"}`,
+      `Concours de bourses : ${preinscription.concours_bourses ? "oui" : "non"}`,
+      ...(preinscription.remarques ? [`Remarques : ${preinscription.remarques}`] : []),
+      ...(this.config.urlPublique ? [`Détails : ${this.config.urlPublique}/admin/preinscriptions`] : []),
     ];
     await this.#alerter(lignes.join("\n"));
 
-    const avertissement = ecart
-      ? " Attention : le total ne correspond pas à la somme des articles et de la livraison ; dis au client que l'équipe confirmera le montant."
-      : "";
-    return { texte: `Commande enregistrée sous la référence ${commande.id}.${avertissement} Confirme-la maintenant au client en donnant cette référence.` };
+    return {
+      texte:
+        `Pré-inscription enregistrée sous la référence ${preinscription.id}. ` +
+        "Confirme-la maintenant au prospect en donnant cette référence, puis explique la suite telle que la fiche la décrit.",
+    };
   }
 
   async #demanderUnHumain(conv, e) {
-    const motif = String(e.motif ?? "").trim() || "Le client souhaite parler à une personne.";
+    const motif = String(e.motif ?? "").trim() || "La personne souhaite parler à un conseiller.";
     this.stockage.definirPause(conv.cle, true, motif, "agent");
-    this.stockage.journaliser("info", `Conversation confiée à l'équipe : ${nomClient(conv)}.`, motif);
+    this.stockage.journaliser("info", `Conversation confiée à un conseiller : ${nomClient(conv)}.`, motif);
     const lien = this.config.urlPublique
       ? `\nRépondre : ${this.config.urlPublique}/admin/conversation/${encodeURIComponent(conv.cle)}`
       : "\nRépondez depuis la page /admin de l'agent.";
-    await this.#alerter(`Un client demande une personne de l'équipe.\nClient : ${nomClient(conv)}\nMotif : ${motif}${lien}`);
+    await this.#alerter(`Un prospect demande un conseiller.\nProspect : ${nomClient(conv)}\nMotif : ${motif}${lien}`);
     return {
       texte:
-        "La conversation est confiée à l'équipe : tu ne répondras plus à ce client tant qu'une personne n'aura pas relancé l'agent. " +
-        "Dis-lui maintenant, en une phrase, qu'une personne de l'équipe va lui répondre ici.",
+        "La conversation est confiée à un conseiller : tu ne répondras plus à cette personne tant qu'un membre de l'équipe n'aura pas relancé l'agent. " +
+        "Dis-lui maintenant, en une phrase, qu'un conseiller va lui répondre ici.",
     };
   }
 
@@ -478,7 +476,7 @@ export class Agent {
         "alerte-meme-numero",
         "avertissement",
         "OWNER_WHATSAPP est le numéro de l'agent lui-même : alerte non envoyée.",
-        "Mettez dans OWNER_WHATSAPP un autre numéro (votre seconde puce, par exemple), ou suivez les commandes dans /admin.",
+        "Mettez dans OWNER_WHATSAPP un autre numéro (votre seconde puce, par exemple), ou suivez les pré-inscriptions dans /admin.",
       );
       return false;
     }

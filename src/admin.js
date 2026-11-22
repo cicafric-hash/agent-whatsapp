@@ -1,8 +1,8 @@
-// Page d'administration /admin : conversations, commandes, journal et outils WhatsApp.
+// Page d'administration /admin : conversations, pré-inscriptions, journal et outils WhatsApp.
 // Protégée par un mot de passe (authentification HTTP Basic, utilisateur « admin »).
 import crypto from "node:crypto";
 import express from "express";
-import { apercu, dateLisible, echapperHtml as h, formaterMontant, formaterNumero, masquerNumero } from "./format.js";
+import { apercu, dateLisible, echapperHtml as h, formaterNumero, masquerNumero } from "./format.js";
 import { egaliteSure, jetonFormulaire } from "./securite.js";
 import { conseilPourCode, ErreurWhatsApp } from "./whatsapp.js";
 
@@ -67,7 +67,7 @@ dl.config dd{margin:2px 0 0;color:var(--doux);overflow-wrap:anywhere}
 
 const PAGES_MENU = [
   ["/admin", "Conversations"],
-  ["/admin/commandes", "Commandes"],
+  ["/admin/preinscriptions", "Pré-inscriptions"],
   ["/admin/outils", "Outils"],
   ["/admin/journal", "Journal"],
 ];
@@ -185,9 +185,9 @@ export function creerRouteurAdmin({ config, stockage, agent, whatsapp, connaissa
   // --- Tableau de bord : conversations ---
   routeur.get("/", (req, res) => {
     const conversations = stockage.listeConversations();
-    const commandes = stockage.listeCommandes();
+    const preinscriptions = stockage.listePreinscriptions();
     const aujourdHui = dateLisible(new Date(), config.fuseau).slice(0, 10);
-    const commandesDuJour = commandes.filter((c) => dateLisible(c.creeeLe, config.fuseau).slice(0, 10) === aujourdHui);
+    const preinscriptionsDuJour = preinscriptions.filter((p) => dateLisible(p.creeeLe, config.fuseau).slice(0, 10) === aujourdHui);
     const enPause = conversations.filter((c) => c.pause);
     const alertes = stockage.listeJournal().filter((e) => e.niveau !== "info").slice(0, 5);
 
@@ -199,7 +199,7 @@ export function creerRouteurAdmin({ config, stockage, agent, whatsapp, connaissa
       .map((c) => {
         const dernier = c.messages.at(-1);
         const qui = dernier?.role === "client" ? "" : dernier?.role === "humain" ? "Équipe : " : "Agent : ";
-        const nom = c.nom ? h(c.nom) : "Client";
+        const nom = c.nom ? h(c.nom) : "Contact";
         const numero = c.telephone ? formaterNumero(c.telephone) : "numéro masqué";
         const statut = c.pause ? ' <span class="badge pause">En pause</span>' : "";
         return `<li><a href="/admin/conversation/${encodeURIComponent(c.cle)}"><strong>${nom}</strong> <span class="doux">${h(numero)}</span>${statut}<br><span class="doux">${h(qui)}${h(apercu(dernier?.texte ?? ""))} · ${h(dateLisible(c.derniereActivite, config.fuseau))}</span></a></li>`;
@@ -218,7 +218,7 @@ export function creerRouteurAdmin({ config, stockage, agent, whatsapp, connaissa
 <div class="stats">
 <div class="stat"><strong>${conversations.length}</strong><span class="doux">conversations (30 derniers jours)</span></div>
 <div class="stat"><strong>${enPause.length}</strong><span class="doux">en attente d'une personne</span></div>
-<div class="stat"><strong>${commandesDuJour.length}</strong><span class="doux">commandes aujourd'hui</span></div>
+<div class="stat"><strong>${preinscriptionsDuJour.length}</strong><span class="doux">pré-inscriptions aujourd'hui</span></div>
 </div>
 <div class="carte">${lignes ? `<ul class="liste">${lignes}</ul>` : '<p class="doux">Aucune conversation pour le moment. Écrivez à votre numéro WhatsApp pour tester l\'agent.</p>'}</div>
 ${blocAlertes}`,
@@ -270,10 +270,10 @@ ${blocAlertes}`,
 <textarea id="texte" name="texte" maxlength="4000" required placeholder="Votre message au client…"></textarea>
 <p class="doux">Envoyer une réponse met l'agent en pause pour ce client. Relancez-le quand vous avez fini.</p>
 <button type="submit">Envoyer sur WhatsApp</button></form></div>
-<div class="carte"><h2>Effacer ce client</h2><p class="doux">Supprime la conversation et anonymise ses commandes. Action définitive.</p>
+<div class="carte"><h2>Effacer ce contact</h2><p class="doux">Supprime la conversation et anonymise ses pré-inscriptions. Action définitive.</p>
 <form method="post" action="${action}/supprimer">${champJeton}
 <label><input type="checkbox" name="confirmation" value="oui" required> Je confirme la suppression</label>
-<button type="submit" class="danger">Effacer les données de ce client</button></form></div>`,
+<button type="submit" class="danger">Effacer les données de ce contact</button></form></div>`,
       }),
     );
   });
@@ -313,33 +313,29 @@ ${blocAlertes}`,
     return res.redirect(303, `/admin?f=${flash("ok", "Les données de ce client ont été effacées.")}`);
   });
 
-  // --- Commandes ---
-  routeur.get("/commandes", (req, res) => {
-    const commandes = stockage.listeCommandes();
-    const cartes = commandes
-      .map((c) => {
-        const articles = c.articles
-          .map((a) => `<li>${h(a.quantite)} × ${h(a.produit)} — ${formaterMontant(a.prix_unitaire)} FCFA</li>`)
-          .join("");
-        const lienClient = c.client
-          ? `<a href="/admin/conversation/${encodeURIComponent(c.client)}">${h(c.nom_client)}</a>`
-          : h(c.nom_client);
-        const numeros = [c.telephoneWhatsApp ? formaterNumero(c.telephoneWhatsApp) : "", c.telephone ? `livraison : ${c.telephone}` : ""]
+  // --- Pré-inscriptions ---
+  routeur.get("/preinscriptions", (req, res) => {
+    const cartes = stockage
+      .listePreinscriptions()
+      .map((p) => {
+        const lienContact = p.client
+          ? `<a href="/admin/conversation/${encodeURIComponent(p.client)}">${h(p.nom_complet)}</a>`
+          : h(p.nom_complet);
+        const numeros = [p.telephoneWhatsApp ? formaterNumero(p.telephoneWhatsApp) : "", p.telephone ? `autre numéro : ${p.telephone}` : ""]
           .filter(Boolean)
           .join(" · ");
-        const ecart = Math.abs(Number(c.total) - (Number(c.sous_total_calcule) + Number(c.frais_livraison))) >= 1;
-        return `<div class="carte"><p><strong>${h(c.id)}</strong> <span class="doux">· ${h(dateLisible(c.creeeLe, config.fuseau))}</span>${ecart ? ' <span class="badge erreur">Total à vérifier</span>' : ""}</p>
-<p>${lienClient}${numeros ? `<br><span class="doux">${h(numeros)}</span>` : ""}</p>
-<ul class="articles">${articles}</ul>
-<p><strong>Total : ${formaterMontant(c.total)} FCFA</strong> <span class="doux">(dont livraison ${formaterMontant(c.frais_livraison)} FCFA)</span></p>
-<p class="doux">Adresse : ${h(c.adresse_ou_quartier || "non précisée")}<br>Paiement : ${h(c.mode_paiement || "non précisé")}${c.remarques ? `<br>Remarques : ${h(c.remarques)}` : ""}</p></div>`;
+        const bourse = p.concours_bourses ? ' <span class="badge">Concours de bourses</span>' : "";
+        return `<div class="carte"><p><strong>${h(p.id)}</strong> <span class="doux">· ${h(dateLisible(p.creeeLe, config.fuseau))}</span>${bourse}</p>
+<p>${lienContact}${numeros ? `<br><span class="doux">${h(numeros)}</span>` : ""}</p>
+<p><strong>${h(p.filiere)}</strong><br><span class="doux">${h(p.niveau_entree)} · ${h(p.rythme)}</span></p>
+<p class="doux">Dernier diplôme : ${h(p.dernier_diplome || "non précisé")}<br>Ville : ${h(p.ville || "non précisée")}${p.remarques ? `<br>Remarques : ${h(p.remarques)}` : ""}</p></div>`;
       })
       .join("");
     res.send(
       page({
-        titre: "Commandes",
-        actif: "/admin/commandes",
-        contenu: cartes || '<div class="carte"><p class="doux">Aucune commande pour le moment.</p></div>',
+        titre: "Pré-inscriptions",
+        actif: "/admin/preinscriptions",
+        contenu: cartes || '<div class="carte"><p class="doux">Aucune pré-inscription pour le moment.</p></div>',
       }),
     );
   });

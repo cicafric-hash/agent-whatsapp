@@ -129,48 +129,76 @@ describe("réception des messages (POST)", () => {
     assert.equal(conv.pause, true);
   });
 
-  it("enregistre une commande confirmée, alerte le propriétaire et confirme au client", async () => {
-    const commande = {
-      nom_client: "Awa Traoré",
-      articles: [{ produit: "Bazin riche, 5 m", quantite: 2, prix_unitaire: 25000 }],
-      frais_livraison: 1500,
-      total: 51500,
-      adresse_ou_quartier: "ACI 2000, Bamako",
-      mode_paiement: "Orange Money",
+  it("enregistre une pré-inscription confirmée, alerte l'équipe et confirme au prospect", async () => {
+    const preinscription = {
+      nom_complet: "Awa Traoré",
+      filiere: "Finance & Comptabilité",
+      niveau_entree: "Licence 1",
+      rythme: "Soir",
+      dernier_diplome: "Bac TSECO 2026",
+      ville: "Bamako, Kalaban Coura",
+      concours_bourses: true,
       telephone: "",
-      remarques: "Couleur bleue",
+      remarques: "Souhaite recevoir les frais par WhatsApp",
     };
     const { base, config, agent, appels, whatsapp, stockage } = await preparer({
-      reponses: [reponseOutil("enregistrer_commande", commande), reponseTexte("C'est noté ! Votre commande est confirmée.")],
+      reponses: [
+        reponseOutil("enregistrer_preinscription", preinscription),
+        reponseTexte("C'est noté ! Votre pré-inscription est enregistrée."),
+      ],
     });
-    await posterWebhook(base, webhook({ messages: [messageTexte("Oui je confirme la commande")] }), config.appSecret);
+    await posterWebhook(base, webhook({ messages: [messageTexte("Oui, je confirme ma pré-inscription")] }), config.appSecret);
     await agent.attendreInactivite();
 
-    const commandes = stockage.listeCommandes();
-    assert.equal(commandes.length, 1);
-    assert.match(commandes[0].id, /^CMD-\d{8}-\d{4}$/);
-    assert.equal(commandes[0].total, 51500);
-    assert.equal(commandes[0].sous_total_calcule, 50000);
-    assert.equal(commandes[0].client, NUMERO_CLIENT);
+    const preinscriptions = stockage.listePreinscriptions();
+    assert.equal(preinscriptions.length, 1);
+    assert.match(preinscriptions[0].id, /^PRE-\d{8}-\d{4}$/);
+    assert.equal(preinscriptions[0].filiere, "Finance & Comptabilité");
+    assert.equal(preinscriptions[0].concours_bourses, true);
+    assert.equal(preinscriptions[0].client, NUMERO_CLIENT);
 
     const alerte = whatsapp.envois.find((e) => e.destinataire.telephone === NUMERO_PROPRIETAIRE);
-    assert.ok(alerte, "le propriétaire doit être alerté");
-    assert.match(alerte.texte, /^\[ALERTE PROPRIÉTAIRE\]\nNouvelle commande CMD-/);
-    assert.match(alerte.texte, /2 × Bazin riche, 5 m : 25 000 FCFA/);
-    assert.match(alerte.texte, /Total : 51 500 FCFA/);
+    assert.ok(alerte, "l'équipe doit être alertée");
+    assert.match(alerte.texte, /^\[ALERTE PROPRIÉTAIRE\]\nNouvelle pré-inscription PRE-/);
+    assert.match(alerte.texte, /Filière : Finance & Comptabilité/);
+    assert.match(alerte.texte, /Niveau d'entrée : Licence 1 · Rythme : Soir/);
+    assert.match(alerte.texte, /Concours de bourses : oui/);
 
-    const auClient = whatsapp.envois.filter((e) => e.destinataire.telephone === NUMERO_CLIENT);
-    assert.equal(auClient.length, 1);
-    assert.equal(auClient[0].texte, "C'est noté ! Votre commande est confirmée.");
+    const auProspect = whatsapp.envois.filter((e) => e.destinataire.telephone === NUMERO_CLIENT);
+    assert.equal(auProspect.length, 1);
+    assert.equal(auProspect[0].texte, "C'est noté ! Votre pré-inscription est enregistrée.");
 
     // Le second appel renvoie le contenu de l'assistant tel quel, suivi du résultat de l'outil.
     assert.equal(appels.length, 2);
     const echanges = appels[1].messages;
-    assert.deepEqual(echanges.at(-2), { role: "assistant", content: reponseOutil("enregistrer_commande", commande).content });
+    assert.deepEqual(echanges.at(-2), { role: "assistant", content: reponseOutil("enregistrer_preinscription", preinscription).content });
     const resultat = echanges.at(-1).content[0];
     assert.equal(resultat.type, "tool_result");
     assert.equal(resultat.tool_use_id, "toolu_test_1");
-    assert.match(resultat.content, /Commande enregistrée sous la référence CMD-/);
+    assert.match(resultat.content, /Pré-inscription enregistrée sous la référence PRE-/);
+  });
+
+  it("refuse une pré-inscription sans filière et le signale à Claude", async () => {
+    const incomplete = {
+      nom_complet: "Moussa Keïta",
+      filiere: "",
+      niveau_entree: "À déterminer",
+      rythme: "À déterminer",
+      dernier_diplome: "",
+      ville: "",
+      concours_bourses: false,
+      telephone: "",
+      remarques: "",
+    };
+    const { base, config, agent, appels, stockage } = await preparer({
+      reponses: [reponseOutil("enregistrer_preinscription", incomplete), reponseTexte("Quelle filière vous intéresse ?")],
+    });
+    await posterWebhook(base, webhook({ messages: [messageTexte("Inscrivez-moi")] }), config.appSecret);
+    await agent.attendreInactivite();
+    assert.equal(stockage.listePreinscriptions().length, 0);
+    const resultat = appels[1].messages.at(-1).content[0];
+    assert.equal(resultat.is_error, true);
+    assert.match(resultat.content, /il manque le nom du prospect ou la filière/);
   });
 
   it("confie la conversation à l'équipe quand Claude demande un humain", async () => {
@@ -183,7 +211,7 @@ describe("réception des messages (POST)", () => {
     const conv = stockage.conversation(NUMERO_CLIENT);
     assert.equal(conv.pause, true);
     assert.equal(conv.pauseSource, "agent");
-    assert.ok(whatsapp.envois.some((e) => e.destinataire.telephone === NUMERO_PROPRIETAIRE && /demande une personne/.test(e.texte)));
+    assert.ok(whatsapp.envois.some((e) => e.destinataire.telephone === NUMERO_PROPRIETAIRE && /demande un conseiller/.test(e.texte)));
     assert.ok(whatsapp.envois.some((e) => e.destinataire.telephone === NUMERO_CLIENT && e.texte === "Une personne va vous répondre ici."));
 
     await posterWebhook(base, webhook({ messages: [messageTexte("Allô ?")] }), config.appSecret);
