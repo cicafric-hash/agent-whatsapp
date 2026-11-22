@@ -28,19 +28,15 @@ La fiche a été remplie avec les informations du site www.eutg-mali.com. Ce que
 
 ## Mettre l'agent en ligne sur Render
 
-1. Sur [dashboard.render.com](https://dashboard.render.com), cliquez sur **New +**, puis **Web Service**, et choisissez ce dépôt.
-2. Remplissez les champs :
-    - **Name** : agent-whatsapp
-    - **Region** : Frankfurt (EU Central)
-    - **Branch** : main
-    - **Language** : Node
-    - **Build Command** : `npm install`
-    - **Start Command** : `npm start`
-    - **Instance Type** : Free pour les tests, Starter pour la production
-3. Ajoutez les variables du tableau ci-dessous dans **Environment Variables**.
-4. Lancez le déploiement et attendez le statut **Live**.
+Le fichier `render.yaml` contient déjà toute la configuration (Node, région Frankfurt, plan gratuit, commandes, contrôle de santé `/health`). Render ne vous demande que vos clés.
+
+1. Sur [dashboard.render.com](https://dashboard.render.com), cliquez sur **New +**, puis **Blueprint**.
+2. Choisissez ce dépôt. Si Render ne le voit pas, autorisez-le à accéder au dépôt sur GitHub.
+3. Donnez un nom au Blueprint (par exemple agent-whatsapp), puis remplissez les 8 valeurs demandées (tableau ci-dessous).
+4. Validez, puis attendez que le service `agent-whatsapp` passe au statut **Live**.
 5. Ouvrez `https://VOTRE-ADRESSE.onrender.com/health` : la page doit afficher `{"status":"ok"}`.
-6. Dans **Settings**, indiquez `/health` comme **Health Check Path**.
+
+Sans Blueprint, vous pouvez aussi créer le service à la main (**New +**, puis **Web Service**) : Language Node, Region Frankfurt, Branch main, Build Command `npm ci`, Start Command `npm start`, Health Check Path `/health`.
 
 En production, passez en **Starter**, ajoutez un disque (**Disks** : Mount Path `/var/data`, 1 Go) et la variable `DATA_DIR` = `/var/data`. Sans disque, les conversations et les pré-inscriptions s'effacent à chaque redéploiement.
 

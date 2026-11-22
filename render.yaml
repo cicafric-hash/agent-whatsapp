@@ -1,0 +1,30 @@
+# Configuration Render (« Blueprint ») de l'agent WhatsApp.
+# Sur dashboard.render.com : New > Blueprint, choisissez ce dépôt, puis remplissez les valeurs demandées.
+# Les valeurs marquées « sync: false » sont des secrets : Render les demande à la création, elles ne sont jamais écrites ici.
+services:
+  - type: web
+    name: agent-whatsapp
+    runtime: node
+    region: frankfurt # la région Render la plus proche du Mali
+    plan: free # passez en « starter » (toujours allumé) pour la production
+    branch: main
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: ANTHROPIC_API_KEY # clé de l'API Claude (platform.claude.com > API keys), commence par sk-ant-
+        sync: false
+      - key: WHATSAPP_TOKEN # token permanent de l'utilisateur système Meta
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID # identifiant du numéro (WhatsApp > API Setup)
+        sync: false
+      - key: WHATSAPP_BUSINESS_ACCOUNT_ID # identifiant du compte WhatsApp Business (WhatsApp > API Setup)
+        sync: false
+      - key: WHATSAPP_APP_SECRET # clé secrète de l'application Meta (App settings > Basic)
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN # phrase sans espace que vous inventez, à recopier chez Meta
+        sync: false
+      - key: ADMIN_PASSWORD # mot de passe de la page /admin, 16 caractères ou plus
+        sync: false
+      - key: OWNER_WHATSAPP # numéro des alertes, chiffres seulement (22375758670 pendant les tests)
+        sync: false
